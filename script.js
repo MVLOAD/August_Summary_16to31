@@ -21,32 +21,51 @@ const C = {
 };
 const orangeA = (a) => `rgba(245,130,32,${a})`;
 
-// Chart defaults — Dark theme
-const CD = Chart.defaults;
-CD.color = C.text3;
-CD.font.family = 'Inter, -apple-system, system-ui, sans-serif';
-CD.font.size = 11;
-CD.plugins.tooltip.backgroundColor = C.s3;
-CD.plugins.tooltip.borderColor = C.border;
-CD.plugins.tooltip.borderWidth = 1;
-CD.plugins.tooltip.padding = 12;
-CD.plugins.tooltip.cornerRadius = 8;
-CD.plugins.tooltip.titleColor = C.orange;
-CD.plugins.tooltip.titleFont = {size:11, weight:'700'};
-CD.plugins.tooltip.bodyColor = C.text;
-CD.plugins.tooltip.bodyFont = {size:12, weight:'500'};
-CD.plugins.tooltip.displayColors = false;
-CD.scale.grid.color = C.grid;
-CD.scale.grid.drawBorder = false;
-CD.scale.ticks.color = C.text3;
+// DOM helper — defined up top, before anything that might throw, so the rest of the
+// dashboard (search/filter, tables, KPIs) still works even if Chart.js failed to load
+// (blocked CDN, offline, ad-blocker, restrictive CSP, etc).
+const $=id=>document.getElementById(id);
 
-// Counter Animation
+// Safe Chart.js wrapper — never throws, so a missing/blocked Chart.js library can't
+// take down unrelated code that happens to run in the same function (e.g. renderDelayPanel
+// also updates KPI text nodes after drawing its charts).
+function safeChart(ctx, config){
+  if (typeof Chart === 'undefined') { console.warn('Chart.js not loaded — skipping chart render'); return null; }
+  if (!ctx) return null;
+  try { return new Chart(ctx, config); }
+  catch(e) { console.error('Chart render failed:', e); return null; }
+}
+
+// Chart defaults — Dark theme (guarded: only runs if Chart.js actually loaded)
+if (typeof Chart !== 'undefined') {
+  const CD = Chart.defaults;
+  CD.color = C.text3;
+  CD.font.family = 'Inter, -apple-system, system-ui, sans-serif';
+  CD.font.size = 11;
+  CD.plugins.tooltip.backgroundColor = C.s3;
+  CD.plugins.tooltip.borderColor = C.border;
+  CD.plugins.tooltip.borderWidth = 1;
+  CD.plugins.tooltip.padding = 12;
+  CD.plugins.tooltip.cornerRadius = 8;
+  CD.plugins.tooltip.titleColor = C.orange;
+  CD.plugins.tooltip.titleFont = {size:11, weight:'700'};
+  CD.plugins.tooltip.bodyColor = C.text;
+  CD.plugins.tooltip.bodyFont = {size:12, weight:'500'};
+  CD.plugins.tooltip.displayColors = false;
+  CD.scale.grid.color = C.grid;
+  CD.scale.grid.drawBorder = false;
+  CD.scale.ticks.color = C.text3;
+}
+
+// Counter Animation — respects data-decimals so fractional targets (tonnage-in-thousands,
+// revenue-in-lakhs) animate to their real precision instead of being rounded to an integer.
 function animateCounters(){
   document.querySelectorAll('.counter').forEach(el=>{
-    const t=+el.dataset.target,dur=1800,st=performance.now();
+    const t=+el.dataset.target,dec=+(el.dataset.decimals||0),dur=1800,st=performance.now();
     (function tick(now){
       const p=Math.min((now-st)/dur,1);
-      el.textContent=Math.round(t*(1-Math.pow(1-p,3)));
+      const v=t*(1-Math.pow(1-p,3));
+      el.textContent=dec>0?v.toFixed(dec):Math.round(v).toLocaleString('en-IN');
       if(p<1)requestAnimationFrame(tick);
     })(st);
   });
@@ -66,16 +85,15 @@ function switchTab(id,btn){
 window.switchTab=switchTab;
 
 // Client Data — sourced from MVLOAD_16_08_2026.xlsx ("Tonnage_of_August_Month" target/personnel sheet
-// cross-referenced with "Total_Tonnage_this_month" for achieved kg). "Haier" and "Haier CCR" are the
-// same customer recorded under two labels in the source sheets, so their tonnage is merged into one row.
-// activeDays=16.
+// cross-referenced with "Total_Tonnage_this_month" for achieved kg; "Sheet10" skipped per request).
+// "Haier" and "Haier CCR" are the same customer, merged into one row. activeDays=16.
 const clients=[
-  {name:"Carrier Refrigeration",person:"Sangeet Dhasmana",target:293073.0,achieved:152066.83,activeDays:16},
-  {name:"Carrier CTD",person:"Deepak Sharma",target:74460.0,achieved:27129.16,activeDays:16},
+  {name:"Carrier Refrigeration",person:"Sangeet Dhasmana",target:293073.0,achieved:133773.83,activeDays:16},
+  {name:"Carrier CTD",person:"Deepak Sharma",target:74460.0,achieved:39504.42,activeDays:16},
   {name:"Mitras Technocrafts Pvt Ltd-HR",person:"Deepak Sharma",target:13501.0,achieved:1815.71,activeDays:16},
   {name:"Paramount Surgimed Ltd",person:"Deepak Sharma",target:12039.0,achieved:329.97,activeDays:16},
   {name:"Haier CCR",person:"Deepak Sharma",target:36298.0,achieved:3903.42,activeDays:16},
-  {name:"Bombax",person:"Sangeet Dhasmana",target:97357.0,achieved:37248.02,activeDays:16},
+  {name:"Bombax",person:"Sangeet Dhasmana",target:97357.0,achieved:39473.55,activeDays:16},
   {name:"Kumar Services",person:"Deepak Sharma",target:13725.0,achieved:2633.26,activeDays:16},
   {name:"Edusoft Healthcare Ltd",person:"Deepak Sharma",target:3631.0,achieved:0,activeDays:16},
   {name:"Oneiric Appliances Pvt Ltd",person:"Deepak Sharma",target:15232.0,achieved:3892.02,activeDays:16},
@@ -115,22 +133,22 @@ const pT={
   "Conficore":{first10:5000.0,mid10:0.0,last10:0.0},
 };
 
-// Period achieved — summed from the daily entries through Aug 16 (Aug 15 was a holiday, Aug 16 Sunday).
+// Period achieved — summed from the daily entries through Aug 16 (Aug 15 a holiday, Sundays excluded).
 const pA={
-  "Carrier Refrigeration":{first10:115181.34,mid10:36885.49,last10:null},
-  "Carrier CTD":{first10:26498.34,mid10:635.48,last10:null},
+  "Carrier Refrigeration":{first10:97073.34,mid10:36700.35,last10:null},
+  "Carrier CTD":{first10:26498.34,mid10:13005.34,last10:null},
   "Mitras Technocrafts Pvt Ltd-HR":{first10:501.98,mid10:1313.72,last10:null},
   "Paramount Surgimed Ltd":{first10:null,mid10:329.97,last10:null},
-  "Haier CCR":{first10:2910.89,mid10:887.0,last10:null},
-  "Bombax":{first10:29217.84,mid10:8028.05,last10:null},
+  "Haier CCR":{first10:2910.89,mid10:992.31,last10:null},
+  "Bombax":{first10:29217.84,mid10:10253.64,last10:null},
   "Kumar Services":{first10:128.0,mid10:2505.26,last10:null},
   "Edusoft Healthcare Ltd":{first10:null,mid10:null,last10:null},
   "Oneiric Appliances Pvt Ltd":{first10:564.01,mid10:3328.01,last10:null},
   "Vaidrishi Laboratories Pvt Ltd":{first10:1015.3,mid10:366.9,last10:null},
   "Sukuga Technologies Pvt Ltd":{first10:1586.86,mid10:1518.98,last10:null},
   "Cosmos Pumps Pvt Ltd":{first10:4325.0,mid10:765.99,last10:null},
-  "Loom Solar Pvt Ltd":{first10:4035.0,mid10:576.0,last10:null},
-  "Medical Science":{first10:2735.02,mid10:null,last10:null},
+  "Loom Solar Pvt Ltd":{first10:4035.0,mid10:50.0,last10:null},
+  "Medical Science":{first10:2735.02,mid10:526.0,last10:null},
   "Epson":{first10:290.0,mid10:1167.0,last10:null},
   "Conficore":{first10:1893.0,mid10:77.33,last10:null},
 };
@@ -144,280 +162,211 @@ clients.forEach(c=>{
   };
 });
 
-// EDD Crossed — from "Order EDD Crossed" sheet (deduplicated), grouped by customer.
+// EDD Crossed — from "Order EDD Crossed" sheet (deduplicated), grouped by customer. Haier merged into Haier CCR.
 const eddData=[
-  {name:"Bombax",count:100},
-  {name:"Carrier Refrigeration",count:70},
-  {name:"Carrier - CTD",count:19},
-  {name:"Epson India",count:10},
-  {name:"Oneric Appliances",count:7},
-  {name:"Sukuga",count:5},
-  {name:"Loom Solar",count:5},
-  {name:"Haier CCR",count:5},
-  {name:"Medical Science",count:4},
+  {name:"Bombax",count:73},
+  {name:"Carrier Refrigeration",count:53},
+  {name:"Epson India",count:9},
+  {name:"Oneric Appliances",count:8},
+  {name:"Carrier - CTD",count:6},
+  {name:"Haier CCR",count:4},
   {name:"MITRAS",count:3},
+  {name:"Loom Solar",count:3},
   {name:"Kumar Services",count:3},
-  {name:"Cosmos Pumps Pvt. Ltd.",count:1},
+  {name:"Medical Science",count:2},
+  {name:"Sukuga",count:1},
   {name:"Vaidrishi Laboratories",count:1},
   {name:"Conficore",count:1},
 ];
 const eddTotal=eddData.reduce((a,b)=>a+b.count,0);
 
-// Full EDD-crossed order detail. This file's sheet has a real "Vendor / Customer" column again,
-// so type comes straight from that column (not keyword-guessed).
+// Full EDD-crossed order detail. This file's classification column is now named "Delayed by" (was
+// "Vendor / Customer" previously) but carries the same Customer/Vendor values, used directly.
 const eddDetail=[
-  {id:"MVS/26-27/1304",name:"Bombax",transporter:"EKART",edd:"28 Apr 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/2679",name:"Bombax",transporter:"EKART",edd:"17 May 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/2680",name:"Bombax",transporter:"EKART",edd:"19 May 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/2684",name:"Bombax",transporter:"EKART",edd:"17 May 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/2692",name:"Bombax",transporter:"EKART",edd:"19 May 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/2694",name:"Bombax",transporter:"EKART",edd:"19 May 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/2698",name:"Bombax",transporter:"EKART",edd:"19 May 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/2764",name:"Bombax",transporter:"EKART",edd:"20 May 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/2874",name:"Bombax",transporter:"EKART",edd:"24 May 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/2900",name:"Bombax",transporter:"EKART",edd:"22 May 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/3032",name:"Bombax",transporter:"EKART",edd:"23 May 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/4080",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"06 Feb 2026",reason:"RTO Document Pending",type:"Vendor"},
-  {id:"MVS/26-27/6589",name:"Bombax",transporter:"EKART",edd:"07 Mar 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/6675",name:"Bombax",transporter:"EKART",edd:"07 Jun 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/6865",name:"Bombax",transporter:"DP WORLD",edd:"07 Oct 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/7103",name:"Bombax",transporter:"EKART",edd:"07 Nov 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/7560",name:"Bombax",transporter:"EKART",edd:"17 Jul 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/7866",name:"Bombax",transporter:"EKART",edd:"20 Jul 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/8104",name:"Bombax",transporter:"EKART",edd:"22 Jul 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/8643",name:"Bombax",transporter:"EKART",edd:"27 Jul 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/8812",name:"Bombax",transporter:"EKART",edd:"28 Jul 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/9008",name:"Sukuga",transporter:"GATI",edd:"28 Jul 2026",reason:"On Hold â€“ Refused By Customer",type:"Vendor"},
-  {id:"MVS/26-27/9134",name:"Bombax",transporter:"EKART",edd:"31 Jul 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/9141",name:"Bombax",transporter:"EKART",edd:"29 Jul 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/9455",name:"Sukuga",transporter:"DP WORLD",edd:"08 Jan 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/9511",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"31 Jul 2026",reason:"Intransit Delay",type:"Vendor"},
+  {id:"MVS/26-27/1304",name:"Bombax",transporter:"EKART",edd:"28 Apr 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/2694",name:"Bombax",transporter:"EKART",edd:"19 May 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/3032",name:"Bombax",transporter:"EKART",edd:"23 May 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/6589",name:"Bombax",transporter:"EKART",edd:"03 Jul 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/6675",name:"Bombax",transporter:"EKART",edd:"06 Jul 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/6865",name:"Bombax",transporter:"DP WORLD",edd:"10 Jul 2026",reason:"Need RTO Documents",type:"Customer"},
+  {id:"MVS/26-27/7103",name:"Bombax",transporter:"EKART",edd:"11 Jul 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/7560",name:"Bombax",transporter:"EKART",edd:"17 Jul 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/9134",name:"Bombax",transporter:"EKART",edd:"31 Jul 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/9141",name:"Bombax",transporter:"EKART",edd:"29 Jul 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/9455",name:"Sukuga",transporter:"DP WORLD",edd:"01 Aug 2026",reason:null,type:"Vendor"},
   {id:"MVS/26-27/9525",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"31 Jul 2026",reason:"Connection route impacted due to kawar yatra",type:"Vendor"},
-  {id:"MVS/26-27/9553",name:"Carrier - CTD",transporter:"DP WORLD",edd:"08 Feb 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/9556",name:"Carrier - CTD",transporter:"DP WORLD",edd:"08 Feb 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/9600",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"08 Feb 2026",reason:"Hold by consignee due to space issue",type:"Vendor"},
-  {id:"MVS/26-27/9620",name:"Carrier Refrigeration",transporter:"EKART",edd:"08 Feb 2026",reason:"Delayed â€“ Missed Connection",type:"Vendor"},
-  {id:"MVS/26-27/9627",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"08 Jan 2026",reason:"No Entry Issue",type:"Vendor"},
-  {id:"MVS/26-27/9646",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"08 Jan 2026",reason:"refused by Carrier WH team",type:"Vendor"},
-  {id:"MVS/26-27/9695",name:"Bombax",transporter:"DP WORLD",edd:"08 Mar 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/9718",name:"Loom Solar",transporter:"Gati",edd:"08 Feb 2026",reason:"Connection delay",type:"Vendor"},
-  {id:"MVS/26-27/9769",name:"Bombax",transporter:"EKART",edd:"08 May 2026",reason:"Delayed â€“ Missed Connection",type:"Customer"},
-  {id:"MVS/26-27/9798",name:"Carrier Refrigeration",transporter:"EKART",edd:"08 Mar 2026",reason:"Pending from consignee end",type:"Customer"},
-  {id:"MVS/26-27/9822",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"08 Apr 2026",reason:"Hold By Consignee",type:"Customer"},
-  {id:"MVS/26-27/9831",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"08 Mar 2026",reason:"Hold by consignee",type:"Customer"},
-  {id:"MVS/26-27/9880",name:"Sukuga",transporter:"GATI",edd:"08 Apr 2026",reason:"Delayed - ODA Location",type:"Customer"},
-  {id:"MVS/26-27/9889",name:"Bombax",transporter:"EKART",edd:"08 Apr 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10006",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"08 May 2026",reason:"Pending due to document issue",type:"Customer"},
-  {id:"MVS/26-27/10082",name:"Bombax",transporter:"EKART",edd:"08 Jun 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10083",name:"Bombax",transporter:"EKART",edd:"08 Jun 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10084",name:"Carrier Refrigeration",transporter:"EKART",edd:"08 Feb 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10121",name:"Oneric Appliances",transporter:"GATI",edd:"08 May 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10173",name:"Carrier Refrigeration",transporter:"EKART",edd:"08 May 2026",reason:"Unreachable box",type:"Customer"},
-  {id:"MVS/26-27/10223",name:"Oneric Appliances",transporter:"DP WORLD",edd:"08 Mar 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10235",name:"Sukuga",transporter:"Gati",edd:"08 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10242",name:"Bombax",transporter:"EKART",edd:"08 Aug 2026",reason:"Delayed â€“ Missed Connection",type:"Customer"},
-  {id:"MVS/26-27/10243",name:"Bombax",transporter:"EKART",edd:"08 Jul 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10245",name:"Bombax",transporter:"EKART",edd:"08 Jul 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10251",name:"Bombax",transporter:"EKART",edd:"08 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10257",name:"Bombax",transporter:"EKART",edd:"08 Sep 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10263",name:"Bombax",transporter:"EKART",edd:"08 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10265",name:"Bombax",transporter:"EKART",edd:"08 Aug 2026",reason:"Delayed â€“ Missed Connection",type:"Customer"},
-  {id:"MVS/26-27/10267",name:"MITRAS",transporter:"EKART",edd:"08 Apr 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10278",name:"Carrier Refrigeration",transporter:"EKART",edd:"08 Jun 2026",reason:"ODC shipment â€“ 2 delivery attempts failed: 1st due to no labour at consignee location; yesterday, vehicle was stuck in heavy traffic.",type:"Customer"},
-  {id:"MVS/26-27/10289",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"08 Jul 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10300",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"08 Jul 2026",reason:"Intransit Delay",type:"Customer"},
+  {id:"MVS/26-27/9600",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"02 Aug 2026",reason:"Hold by consignee due to space issue",type:"Customer"},
+  {id:"MVS/26-27/9620",name:"Carrier Refrigeration",transporter:"EKART",edd:"02 Aug 2026",reason:"Delayed – Missed Connection",type:"Vendor"},
+  {id:"MVS/26-27/9627",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"01 Aug 2026",reason:"No Entry Issue",type:"Customer"},
+  {id:"MVS/26-27/9646",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"01 Aug 2026",reason:"refused by Carrier WH team",type:"Customer"},
+  {id:"MVS/26-27/9769",name:"Bombax",transporter:"EKART",edd:"05 Aug 2026",reason:"Delayed – Missed Connection",type:"Vendor"},
+  {id:"MVS/26-27/9822",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"04 Aug 2026",reason:"Hold By Consignee",type:"Customer"},
+  {id:"MVS/26-27/9831",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"03 Aug 2026",reason:"Hold by consignee",type:"Customer"},
+  {id:"MVS/26-27/9889",name:"Bombax",transporter:"EKART",edd:"04 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10006",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"05 Aug 2026",reason:"Pending due to document issue",type:"Customer"},
+  {id:"MVS/26-27/10082",name:"Bombax",transporter:"EKART",edd:"06 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10121",name:"Oneric Appliances",transporter:"GATI",edd:"05 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/10173",name:"Carrier Refrigeration",transporter:"EKART",edd:"05 Aug 2026",reason:"Unreachable box",type:"Vendor"},
+  {id:"MVS/26-27/10223",name:"Oneric Appliances",transporter:"DP WORLD",edd:"03 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/10242",name:"Bombax",transporter:"EKART",edd:"08 Aug 2026",reason:"Delayed – Missed Connection",type:"Vendor"},
+  {id:"MVS/26-27/10243",name:"Bombax",transporter:"EKART",edd:"07 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10245",name:"Bombax",transporter:"EKART",edd:"07 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10257",name:"Bombax",transporter:"EKART",edd:"09 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10265",name:"Bombax",transporter:"EKART",edd:"08 Aug 2026",reason:"Delayed – Missed Connection",type:"Vendor"},
+  {id:"MVS/26-27/10267",name:"MITRAS",transporter:"EKART",edd:"04 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/10278",name:"Carrier Refrigeration",transporter:"EKART",edd:"06 Aug 2026",reason:"ODC shipment – 2 delivery attempts failed: 1st due...",type:"Customer"},
+  {id:"MVS/26-27/10289",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"07 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/10300",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"07 Aug 2026",reason:null,type:"Vendor"},
   {id:"MVS/26-27/10337",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"08 Aug 2026",reason:"Refused by Customer",type:"Customer"},
-  {id:"MVS/26-27/10437",name:"Bombax",transporter:"EKART",edd:"08 Nov 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10440",name:"Bombax",transporter:"EKART",edd:"08 Aug 2026",reason:"Delayed â€“ Missed Connection",type:"Customer"},
-  {id:"MVS/26-27/10448",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"08 Jul 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10450",name:"Loom Solar",transporter:"GATI",edd:"08 Oct 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10472",name:"Carrier - CTD",transporter:"DP WORLD",edd:"08 Sep 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10503",name:"Bombax",transporter:"EKART",edd:"08 Oct 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10509",name:"Bombax",transporter:"EKART",edd:"08 Nov 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10510",name:"Bombax",transporter:"EKART",edd:"08 Dec 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10513",name:"Bombax",transporter:"EKART",edd:"08 Nov 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10515",name:"Bombax",transporter:"EKART",edd:"08 Nov 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10520",name:"Bombax",transporter:"EKART",edd:"08 Nov 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10531",name:"Bombax",transporter:"EKART",edd:"08 Sep 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10533",name:"Bombax",transporter:"EKART",edd:"08 Nov 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10535",name:"Bombax",transporter:"EKART",edd:"08 Oct 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10537",name:"Bombax",transporter:"EKART",edd:"08 Dec 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10540",name:"Bombax",transporter:"EKART",edd:"08 Nov 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10543",name:"Bombax",transporter:"EKART",edd:"08 Dec 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10546",name:"Bombax",transporter:"EKART",edd:"08 Nov 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10547",name:"Bombax",transporter:"EKART",edd:"08 Nov 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10551",name:"Bombax",transporter:"EKART",edd:"08 Sep 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10553",name:"Bombax",transporter:"EKART",edd:"08 Sep 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10576",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"08 Sep 2026",reason:"Alt contact required",type:"Customer"},
-  {id:"MVS/26-27/10581",name:"Carrier Refrigeration",transporter:"EKART",edd:"08 Jun 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10583",name:"Carrier Refrigeration",transporter:"EKART",edd:"08 Jun 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10590",name:"Carrier Refrigeration",transporter:"EKART",edd:"08 Jun 2026",reason:"Delayed â€“ Missed Connection",type:"Customer"},
-  {id:"MVS/26-27/10591",name:"Carrier Refrigeration",transporter:"EKART",edd:"08 Jun 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10592",name:"Carrier Refrigeration",transporter:"EKART",edd:"08 Jun 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10601",name:"Carrier Refrigeration",transporter:"EKARTD",edd:"08 Oct 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10620",name:"Loom Solar",transporter:"GATI",edd:"08 Nov 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10621",name:"MITRAS",transporter:"GATI",edd:"08 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10635",name:"Bombax",transporter:"DP WORLD",edd:"08 Nov 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10647",name:"Bombax",transporter:"EKART",edd:"08 Oct 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10651",name:"Bombax",transporter:"EKART",edd:"08 Dec 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10654",name:"Bombax",transporter:"EKART",edd:"13 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10658",name:"Bombax",transporter:"EKART",edd:"13 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10660",name:"Bombax",transporter:"EKART",edd:"08 Dec 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10661",name:"Bombax",transporter:"EKART",edd:"08 Dec 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10665",name:"Bombax",transporter:"EKART",edd:"13 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10679",name:"Bombax",transporter:"EKART",edd:"08 Dec 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10682",name:"Bombax",transporter:"EKART",edd:"13 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10689",name:"Cosmos Pumps Pvt. Ltd.",transporter:"GATI",edd:"08 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10707",name:"Carrier Refrigeration",transporter:"ALLCARGO",edd:"08 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10722",name:"Carrier Refrigeration",transporter:"DP WORLD",edd:"08 Oct 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10725",name:"Epson India",transporter:"EKART",edd:"08 Dec 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10727",name:"Epson India",transporter:"EKART",edd:"08 Oct 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10732",name:"Sukuga",transporter:"GATI",edd:"08 Oct 2026",reason:"Delayed- Consignee Phone Not Available/Not Reachable",type:"Vendor"},
-  {id:"MVS/26-27/10742",name:"Carrier - CTD",transporter:"DP WORLD",edd:"13 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10746",name:"Carrier - CTD",transporter:"DP WORLD",edd:"13 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10752",name:"Carrier - CTD",transporter:"DP WORLD",edd:"08 Nov 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10773",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"08 Oct 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10823",name:"Bombax",transporter:"EKART",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10825",name:"Bombax",transporter:"EKART",edd:"13 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10827",name:"Bombax",transporter:"EKART",edd:"13 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10829",name:"Bombax",transporter:"EKART",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10831",name:"Bombax",transporter:"EKART",edd:"13 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10833",name:"Bombax",transporter:"EKART",edd:"13 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10834",name:"Bombax",transporter:"EKART",edd:"13 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10835",name:"Bombax",transporter:"EKART",edd:"08 Nov 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10836",name:"Carrier Refrigeration",transporter:"DP WORLD",edd:"08 Nov 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10838",name:"Loom Solar",transporter:"DP world",edd:"08 Sep 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10852",name:"Carrier - CTD",transporter:"DP WORLD",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10853",name:"Carrier - CTD",transporter:"DP WORLD",edd:"08 Dec 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10856",name:"Carrier - CTD",transporter:"DP WORLD",edd:"08 Dec 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10858",name:"Carrier - CTD",transporter:"DP WORLD",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10861",name:"Carrier - CTD",transporter:"DP WORLD",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10865",name:"Carrier - CTD",transporter:"DP WORLD",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10874",name:"Medical Science",transporter:"DP WORLD",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10877",name:"Medical Science",transporter:"DP WORLD",edd:"13 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10878",name:"Medical Science",transporter:"DP WORLD",edd:"13 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10893",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"13 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10895",name:"Carrier Refrigeration",transporter:"EKART",edd:"08 Nov 2026",reason:"Alt contact required",type:"Vendor"},
-  {id:"MVS/26-27/10903",name:"Carrier Refrigeration",transporter:"EKART",edd:"08 Nov 2026",reason:"Connection Delayed from BDB Branch",type:"Vendor"},
-  {id:"MVS/26-27/10904",name:"Carrier Refrigeration",transporter:"EKART",edd:"08 Dec 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/10908",name:"Carrier Refrigeration",transporter:"EKART",edd:"13 Aug 2026",reason:"Connection was Missed as Shipment was Untraceable. At Origin",type:"Customer"},
-  {id:"MVS/26-27/10909",name:"Carrier Refrigeration",transporter:"EKART",edd:"08 Sep 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10910",name:"Carrier Refrigeration",transporter:"EKART",edd:"08 Oct 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10925",name:"Bombax",transporter:"EKART",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10927",name:"Bombax",transporter:"EKART",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10928",name:"Bombax",transporter:"EKART",edd:"08 Dec 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10929",name:"Bombax",transporter:"EKART",edd:"08 Dec 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10932",name:"Bombax",transporter:"EKART",edd:"08 Dec 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10936",name:"Bombax",transporter:"DP WORLD",edd:"08 Dec 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10938",name:"Oneric Appliances",transporter:"DP WORLD",edd:"08 Nov 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10942",name:"Haier CCR",transporter:"XP INDIA",edd:"08 Oct 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10946",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"08 Dec 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10963",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10964",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10969",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10975",name:"Carrier Refrigeration",transporter:"EKART",edd:"08 Dec 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10979",name:"Carrier Refrigeration",transporter:"EKART",edd:"13 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10984",name:"Carrier Refrigeration",transporter:"EKART",edd:"08 Nov 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10986",name:"Carrier Refrigeration",transporter:"EKART",edd:"13 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10988",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/10995",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11001",name:"Carrier - CTD",transporter:"DP WORLD",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11007",name:"Carrier - CTD",transporter:"DP WORLD",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11009",name:"Carrier - CTD",transporter:"DP WORLD",edd:"13 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11014",name:"Carrier - CTD",transporter:"DP WORLD",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11018",name:"Bombax",transporter:"DP WORLD",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11020",name:"Bombax",transporter:"DP WORLD",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11022",name:"Bombax",transporter:"DP WORLD",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11025",name:"Bombax",transporter:"DP WORLD",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11026",name:"Bombax",transporter:"DP WORLD",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11027",name:"Bombax",transporter:"DP WORLD",edd:"13 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11030",name:"Bombax",transporter:"DP WORLD",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11036",name:"Bombax",transporter:"DP WORLD",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11040",name:"Bombax",transporter:"DP WORLD",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11041",name:"Bombax",transporter:"DP WORLD",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11042",name:"Bombax",transporter:"DP WORLD",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11043",name:"Bombax",transporter:"DP WORLD",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11046",name:"Bombax",transporter:"EKART",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11047",name:"Bombax",transporter:"EKART",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11053",name:"Bombax",transporter:"EKART",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11057",name:"Bombax",transporter:"EKART",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11059",name:"Bombax",transporter:"EKART",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11061",name:"Bombax",transporter:"EKART",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11063",name:"Bombax",transporter:"EKART",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11064",name:"Bombax",transporter:"EKART",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11066",name:"Bombax",transporter:"EKART",edd:"13 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11069",name:"Bombax",transporter:"EKART",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11080",name:"Carrier Refrigeration",transporter:"EKART",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11082",name:"Carrier Refrigeration",transporter:"DP WORLD",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11088",name:"Medical Science",transporter:"DP WORLD",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11090",name:"Epson India",transporter:"EKART",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11100",name:"Carrier - CTD",transporter:"DP WORLD",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11101",name:"Carrier - CTD",transporter:"DP WORLD",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11110",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11120",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11125",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11145",name:"Vaidrishi Laboratories",transporter:"DP WORLD",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11153",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11155",name:"Carrier Refrigeration",transporter:"EKART",edd:"13 Aug 2026",reason:"NULL",type:"Customer"},
-  {id:"MVS/26-27/11156",name:"Carrier Refrigeration",transporter:"EKART",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11157",name:"Carrier Refrigeration",transporter:"EKART",edd:"13 Aug 2026",reason:"NULL",type:"Customer"},
-  {id:"MVS/26-27/11163",name:"Kumar Services",transporter:"LAST MILE",edd:"15 Aug 2026",reason:"NULL",type:"Customer"},
-  {id:"MVS/26-27/11166",name:"Haier CCR",transporter:"DP WORLD",edd:"13 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11167",name:"Epson India",transporter:"EKART",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Customer"},
-  {id:"MVS/26-27/11168",name:"Epson India",transporter:"EKART",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11169",name:"Epson India",transporter:"EKART",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11171",name:"Epson India",transporter:"EKART",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11172",name:"Epson India",transporter:"EKART",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11173",name:"Epson India",transporter:"EKART",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11175",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"13 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11193",name:"Carrier Refrigeration",transporter:"EKART",edd:"13 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11194",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"13 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11236",name:"Bombax",transporter:"EKART",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11237",name:"Bombax",transporter:"EKART",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11245",name:"Carrier Refrigeration",transporter:"EKART",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11246",name:"Carrier Refrigeration",transporter:"EKART",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11248",name:"Conficore",transporter:"DP WORLD",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11249",name:"Carrier Refrigeration",transporter:"DP WORLD",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11252",name:"Carrier Refrigeration",transporter:"DP WORLD",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11272",name:"Carrier Refrigeration",transporter:"DP WORLD",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11276",name:"Kumar Services",transporter:"LAST MILE",edd:"15 Aug 2026",reason:"NULL",type:"Vendor"},
-  {id:"MVS/26-27/11277",name:"Epson India",transporter:"EKART",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11280",name:"Oneric Appliances",transporter:"GATI",edd:"13 Aug 2026",reason:"NULL",type:"Vendor"},
-  {id:"MVS/26-27/11281",name:"Oneric Appliances",transporter:"GATI",edd:"13 Aug 2026",reason:"NULL",type:"Vendor"},
-  {id:"MVS/26-27/11283",name:"Haier CCR",transporter:"XP INDIA",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11284",name:"Haier CCR",transporter:"XP INDIA",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11287",name:"Kumar Services",transporter:"LAST MILE",edd:"14 Aug 2026",reason:"NULL",type:"Vendor"},
-  {id:"MVS/26-27/11289",name:"Oneric Appliances",transporter:"DP WORLD",edd:"14 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11311",name:"Carrier - CTD",transporter:"DP WORLD",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11312",name:"MITRAS",transporter:"DP WORLD",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11320",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11329",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11338",name:"Carrier Refrigeration",transporter:"EKART",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11367",name:"Loom Solar",transporter:"NULL",edd:"15 Aug 2026",reason:"NULL",type:"Vendor"},
-  {id:"MVS/26-27/11371",name:"Haier CCR",transporter:"XP INDIA",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11377",name:"Oneric Appliances",transporter:"GATI",edd:"15 Aug 2026",reason:"NULL",type:"Vendor"},
-  {id:"MVS/26-27/11392",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11393",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11401",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Vendor"},
-  {id:"MVS/26-27/11412",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"15 Aug 2026",reason:"Intransit Delay",type:"Customer"},
+  {id:"MVS/26-27/10437",name:"Bombax",transporter:"EKART",edd:"11 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10440",name:"Bombax",transporter:"EKART",edd:"08 Aug 2026",reason:"Delayed – Missed Connection",type:"Vendor"},
+  {id:"MVS/26-27/10450",name:"Loom Solar",transporter:"GATI",edd:"10 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/10509",name:"Bombax",transporter:"EKART",edd:"11 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10510",name:"Bombax",transporter:"EKART",edd:"12 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10513",name:"Bombax",transporter:"EKART",edd:"11 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10515",name:"Bombax",transporter:"EKART",edd:"11 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10520",name:"Bombax",transporter:"EKART",edd:"11 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10531",name:"Bombax",transporter:"EKART",edd:"09 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10533",name:"Bombax",transporter:"EKART",edd:"11 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10535",name:"Bombax",transporter:"EKART",edd:"10 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10537",name:"Bombax",transporter:"EKART",edd:"12 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10540",name:"Bombax",transporter:"EKART",edd:"11 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10543",name:"Bombax",transporter:"EKART",edd:"12 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10546",name:"Bombax",transporter:"EKART",edd:"11 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10547",name:"Bombax",transporter:"EKART",edd:"11 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10551",name:"Bombax",transporter:"EKART",edd:"09 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10553",name:"Bombax",transporter:"EKART",edd:"09 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10576",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"09 Aug 2026",reason:"Alt contact required",type:"Customer"},
+  {id:"MVS/26-27/10590",name:"Carrier Refrigeration",transporter:"EKART",edd:"06 Aug 2026",reason:"Delayed – Missed Connection",type:"Vendor"},
+  {id:"MVS/26-27/10592",name:"Carrier Refrigeration",transporter:"EKART",edd:"06 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/10601",name:"Carrier Refrigeration",transporter:"EKART",edd:"10 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/10621",name:"MITRAS",transporter:"GATI",edd:"08 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/10635",name:"Bombax",transporter:"DP WORLD",edd:"11 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/10654",name:"Bombax",transporter:"EKART",edd:"13 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10658",name:"Bombax",transporter:"EKART",edd:"13 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10660",name:"Bombax",transporter:"EKART",edd:"12 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10665",name:"Bombax",transporter:"EKART",edd:"13 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10679",name:"Bombax",transporter:"EKART",edd:"12 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10682",name:"Bombax",transporter:"EKART",edd:"13 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10722",name:"Carrier Refrigeration",transporter:"DP WORLD",edd:"10 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/10725",name:"Epson India",transporter:"EKART",edd:"12 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/10727",name:"Epson India",transporter:"EKART",edd:"10 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/10773",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"10 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/10823",name:"Bombax",transporter:"EKART",edd:"14 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10825",name:"Bombax",transporter:"EKART",edd:"13 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10827",name:"Bombax",transporter:"EKART",edd:"13 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10829",name:"Bombax",transporter:"EKART",edd:"14 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10833",name:"Bombax",transporter:"EKART",edd:"13 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10834",name:"Bombax",transporter:"EKART",edd:"13 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10836",name:"Carrier Refrigeration",transporter:"DP WORLD",edd:"11 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/10838",name:"Loom Solar",transporter:"DP WORLD",edd:"09 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/10841",name:"Carrier - CTD",transporter:"DP WORLD",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/10895",name:"Carrier Refrigeration",transporter:"EKART",edd:"11 Aug 2026",reason:"Alt contact required",type:"Customer"},
+  {id:"MVS/26-27/10903",name:"Carrier Refrigeration",transporter:"EKART",edd:"11 Aug 2026",reason:"Connection Delayed from BDB Branch",type:"Vendor"},
+  {id:"MVS/26-27/10904",name:"Carrier Refrigeration",transporter:"EKART",edd:"12 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/10908",name:"Carrier Refrigeration",transporter:"EKART",edd:"13 Aug 2026",reason:"Connection was Missed as Shipment was Untraceable....",type:"Vendor"},
+  {id:"MVS/26-27/10909",name:"Carrier Refrigeration",transporter:"EKART",edd:"09 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/10925",name:"Bombax",transporter:"EKART",edd:"14 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10927",name:"Bombax",transporter:"EKART",edd:"14 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10928",name:"Bombax",transporter:"EKART",edd:"12 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10929",name:"Bombax",transporter:"EKART",edd:"12 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10932",name:"Bombax",transporter:"EKART",edd:"12 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/10936",name:"Bombax",transporter:"DP WORLD",edd:"12 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/10938",name:"Oneric Appliances",transporter:"DP WORLD",edd:"11 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/10975",name:"Carrier Refrigeration",transporter:"EKART",edd:"12 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/10979",name:"Carrier Refrigeration",transporter:"EKART",edd:"13 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/10984",name:"Carrier Refrigeration",transporter:"EKART",edd:"11 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/10986",name:"Carrier Refrigeration",transporter:"EKART",edd:"13 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/10995",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"15 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11009",name:"Carrier - CTD",transporter:"DP WORLD",edd:"13 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11033",name:"Bombax",transporter:"DP WORLD",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11040",name:"Bombax",transporter:"DP WORLD",edd:"14 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11046",name:"Bombax",transporter:"EKART",edd:"15 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/11047",name:"Bombax",transporter:"EKART",edd:"15 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/11048",name:"Bombax",transporter:"EKART",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11053",name:"Bombax",transporter:"EKART",edd:"15 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/11057",name:"Bombax",transporter:"EKART",edd:"15 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/11059",name:"Bombax",transporter:"EKART",edd:"15 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/11061",name:"Bombax",transporter:"EKART",edd:"15 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/11063",name:"Bombax",transporter:"EKART",edd:"14 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/11064",name:"Bombax",transporter:"EKART",edd:"15 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/11068",name:"Bombax",transporter:"EKART",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11080",name:"Carrier Refrigeration",transporter:"EKART",edd:"14 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11082",name:"Carrier Refrigeration",transporter:"DP WORLD",edd:"14 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11090",name:"Epson India",transporter:"EKART",edd:"15 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11093",name:"Bombax",transporter:"DP WORLD",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11099",name:"Bombax",transporter:"DP WORLD",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11100",name:"Carrier - CTD",transporter:"DP WORLD",edd:"15 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11101",name:"Carrier - CTD",transporter:"DP WORLD",edd:"15 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11118",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11125",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"15 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11145",name:"Vaidrishi Laboratories",transporter:"DP WORLD",edd:"15 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11156",name:"Carrier Refrigeration",transporter:"EKART",edd:"15 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11160",name:"Medical Science",transporter:"DP WORLD",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11161",name:"Medical Science",transporter:"DP WORLD",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11163",name:"Kumar Services",transporter:"LAST MILE",edd:"15 Aug 2026",reason:"National Holiday",type:"Vendor"},
+  {id:"MVS/26-27/11166",name:"Haier CCR",transporter:"DP WORLD",edd:"13 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11168",name:"Epson India",transporter:"EKART",edd:"14 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11169",name:"Epson India",transporter:"EKART",edd:"15 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11171",name:"Epson India",transporter:"EKART",edd:"14 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11172",name:"Epson India",transporter:"EKART",edd:"15 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11174",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11176",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11177",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11194",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"13 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11206",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11207",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11208",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11215",name:"Carrier - CTD",transporter:"DP WORLD",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11216",name:"Carrier - CTD",transporter:"DP WORLD",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11236",name:"Bombax",transporter:"EKART",edd:"15 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/11237",name:"Bombax",transporter:"EKART",edd:"15 Aug 2026",reason:"Delayed- Mall Delivery Timing Restriction",type:"Customer"},
+  {id:"MVS/26-27/11246",name:"Carrier Refrigeration",transporter:"EKART",edd:"15 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11248",name:"Conficore",transporter:"DP WORLD",edd:"15 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11249",name:"Carrier Refrigeration",transporter:"DP WORLD",edd:"14 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11252",name:"Carrier Refrigeration",transporter:"DP WORLD",edd:"15 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11274",name:"Bombax",transporter:"DP WORLD",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11276",name:"Kumar Services",transporter:"LAST MILE",edd:"15 Aug 2026",reason:"National Holiday",type:"Vendor"},
+  {id:"MVS/26-27/11280",name:"Oneric Appliances",transporter:"GATI",edd:"13 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11285",name:"Haier CCR",transporter:"EKART",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11286",name:"Kumar Services",transporter:"LAST MILE",edd:"16 Aug 2026",reason:"National Holiday",type:"Vendor"},
+  {id:"MVS/26-27/11290",name:"Oneric Appliances",transporter:"DP WORLD",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11298",name:"Bombax",transporter:"EKART",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11301",name:"Bombax",transporter:"EKART",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11312",name:"MITRAS",transporter:"DP WORLD",edd:"15 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11320",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"15 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11331",name:"Carrier Refrigeration",transporter:"EKART",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11332",name:"Carrier Refrigeration",transporter:"EKART",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11338",name:"Carrier Refrigeration",transporter:"EKART",edd:"15 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11367",name:"Loom Solar",transporter:null,edd:"15 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11369",name:"Epson India",transporter:"DP WORLD",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11371",name:"Haier CCR",transporter:"XP INDIA",edd:"15 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11377",name:"Oneric Appliances",transporter:"GATI",edd:"15 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11379",name:"Epson India",transporter:"EKART",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11392",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"15 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11393",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"15 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11402",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11412",name:"Carrier Refrigeration",transporter:"XP INDIA",edd:"15 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11470",name:"Oneric Appliances",transporter:"DP WORLD",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11471",name:"Oneric Appliances",transporter:"DP WORLD",edd:"16 Aug 2026",reason:null,type:"Vendor"},
+  {id:"MVS/26-27/11481",name:"Haier CCR",transporter:"DP WORLD",edd:"16 Aug 2026",reason:null,type:"Vendor"},
 ];
 
-// Open Shipment — from "Open Shipment" sheet (deduplicated), grouped by customer.
+// Open Shipment — from "Open Shipment" sheet (deduplicated), grouped by customer. Haier merged into Haier CCR.
 const openData=[
-  {name:"Carrier Refrigeration",count:212},
-  {name:"Bombax",count:192},
-  {name:"Carrier - CTD",count:41},
-  {name:"Epson India",count:20},
-  {name:"Oneric Appliances",count:16},
+  {name:"Carrier Refrigeration",count:192},
+  {name:"Bombax",count:182},
+  {name:"Carrier - CTD",count:57},
+  {name:"Epson India",count:21},
+  {name:"Oneric Appliances",count:13},
   {name:"Sukuga",count:12},
-  {name:"Haier CCR",count:13},
-  {name:"Medical Science",count:9},
-  {name:"KTB",count:9},
+  {name:"Haier CCR",count:11},
+  {name:"Medical Science",count:7},
   {name:"Kumar Services",count:6},
   {name:"Loom Solar",count:5},
   {name:"MITRAS",count:4},
   {name:"Cosmos Pumps Pvt. Ltd.",count:4},
-  {name:"Vaidrishi Laboratories",count:3},
+  {name:"Vaidrishi Laboratories",count:2},
   {name:"Paramount Surgimed Ltd",count:1},
   {name:"Conficore",count:1},
 ];
@@ -425,29 +374,30 @@ const openTotal=openData.reduce((a,b)=>a+b.count,0);
 
 // Due Tomorrow — from "Order due Tommorow" sheet (deduplicated), grouped by customer.
 const dueData=[
-  {name:"Carrier Refrigeration",count:37},
-  {name:"Bombax",count:18},
-  {name:"Epson India",count:4},
-  {name:"Carrier - CTD",count:3},
-  {name:"Cosmos Pumps Pvt. Ltd.",count:1},
-  {name:"Oneric Appliances",count:1},
+  {name:"Carrier Refrigeration",count:29},
+  {name:"Bombax",count:17},
+  {name:"Sukuga",count:2},
+  {name:"Cosmos Pumps Pvt. Ltd.",count:2},
+  {name:"Carrier - CTD",count:2},
+  {name:"Medical Science",count:1},
+  {name:"Epson India",count:1},
+  {name:"Haier CCR",count:1},
   {name:"Kumar Services",count:1},
-  {name:"MITRAS",count:1},
 ];
 const dueTotal=dueData.reduce((a,b)=>a+b.count,0);
 
-// Booked Yesterday — "Shipment Booked Yesterday" sheet only contained a "15TH AUGUST" holiday note, no bookings.
+// Booked Yesterday — "Shipment Booked Yesterday" sheet had no bookings logged.
 const bookedData=[
 ];
 const bookedTotal=bookedData.reduce((a,b)=>a+b.count,0);
 
-// Daily Tonnage — "Daily Tonnage" sheet only contained a "15TH AUGUST" holiday note, no entries.
+// Daily Tonnage — "Daily Tonnage" sheet had no entries.
 const dailyTonnageData=[
 ];
 
 const dailyTotal=dailyTonnageData.reduce((a,b)=>a+b.kg,0);
 const monthlyTotal=clients.reduce((a,c)=>a+c.achieved,0);
-// Aug 2026: active working days set to 16 (confirmed count as of this data pull).
+// Aug 2026: 12 active working days with data through Aug 16 (Aug 2, 9, 16 Sundays; Aug 15 a holiday).
 const activeDays=16;
 const dailyAverage=monthlyTotal/activeDays;
 
@@ -474,7 +424,6 @@ const predictedSales=dailyMoneyRate*DAYS;
 const predictedPct=totalTargetMoney>0?(predictedSales/totalTargetMoney*100):null;
 
 // Populate KPIs
-const $=id=>document.getElementById(id);
 $('kpi-open').textContent=openTotal;
 $('kpi-edd').textContent=eddTotal;
 $('kpi-edd-pct').textContent=Math.round(eddTotal/openTotal*100)+'% of open';
@@ -530,15 +479,9 @@ function renderEddKpis(list){
   }).join('');
 }
 
-function renderEddDetail(filter){
+function renderEddRows(rows){
   const tbody=$('edd-detail-body'),cnt=$('edd-detail-count');
   if(!tbody)return;
-  const q=(filter||'').trim().toLowerCase();
-  const rows=q?eddDetail.filter(r=>
-    r.name.toLowerCase().includes(q)||
-    r.id.toLowerCase().includes(q)||
-    (r.transporter||'').toLowerCase().includes(q)
-  ):eddDetail;
   if(cnt)cnt.textContent=rows.length+' of '+eddDetail.length+' orders';
   if(!rows.length){
     tbody.innerHTML=`<tr><td colspan="6" style="text-align:center;color:${C.text3};padding:32px">No matching orders.</td></tr>`;
@@ -552,7 +495,76 @@ function renderEddDetail(filter){
   }).join('');
   renderEddKpis(rows);
 }
-window.renderEddDetail=renderEddDetail;
+
+// Reads the search box + 3 dropdown filters and returns the matching eddDetail rows.
+function filterEddRows(){
+  const q=($('edd-search')?.value||'').trim().toLowerCase();
+  const type=$('edd-filter-type')?.value||'';
+  const transporter=$('edd-filter-transporter')?.value||'';
+  const reason=$('edd-filter-reason')?.value||'';
+  return eddDetail.filter(r=>{
+    if(q){
+      const hay=(r.name+' '+r.id+' '+(r.transporter||'')+' '+(r.reason||'')).toLowerCase();
+      if(!hay.includes(q))return false;
+    }
+    if(type&&r.type!==type)return false;
+    if(transporter&&(r.transporter||'Unassigned')!==transporter)return false;
+    if(reason&&(r.reason||'Unclassified / Intransit Delay')!==reason)return false;
+    return true;
+  });
+}
+
+function applyEddFilters(){
+  renderEddRows(filterEddRows());
+}
+window.applyEddFilters=applyEddFilters;
+
+function resetEddFilters(){
+  const s=$('edd-search'),t=$('edd-filter-type'),tr=$('edd-filter-transporter'),r=$('edd-filter-reason');
+  if(s)s.value='';
+  if(t)t.value='';
+  if(tr)tr.value='';
+  if(r)r.value='';
+  applyEddFilters();
+}
+window.resetEddFilters=resetEddFilters;
+
+// Fills the three filter dropdowns from the actual data, so options never go stale.
+function populateEddFilterOptions(){
+  const typeSel=$('edd-filter-type'),transSel=$('edd-filter-transporter'),reasonSel=$('edd-filter-reason');
+  const addOptions=(sel,values)=>{
+    if(!sel)return;
+    values.forEach(v=>{
+      const opt=document.createElement('option');
+      opt.value=v;
+      opt.textContent=v.length>55?v.slice(0,52)+'…':v;
+      sel.appendChild(opt);
+    });
+  };
+  const types=[...new Set(eddDetail.map(r=>r.type).filter(Boolean))].sort();
+  const transporters=[...new Set(eddDetail.map(r=>r.transporter||'Unassigned'))].sort();
+  const reasons=[...new Set(eddDetail.map(r=>r.reason||'Unclassified / Intransit Delay'))].sort();
+  addOptions(typeSel,types);
+  addOptions(transSel,transporters);
+  addOptions(reasonSel,reasons);
+}
+
+// Exports whatever is currently filtered/visible to a downloadable .xlsx workbook.
+function exportEddToExcel(){
+  if(typeof XLSX==='undefined'){console.warn('XLSX library not loaded — cannot export');return;}
+  const rows=filterEddRows();
+  const data=rows.map(r=>({
+    'Order ID':r.id,'Customer':r.name,'Type':r.type||'',
+    'Transporter':r.transporter||'','EDD':r.edd||'',
+    'Delay Reason':r.reason||'Intransit Delay'
+  }));
+  const ws=XLSX.utils.json_to_sheet(data);
+  ws['!cols']=[{wch:18},{wch:24},{wch:12},{wch:14},{wch:14},{wch:45}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'EDD Crossed');
+  XLSX.writeFile(wb,'MVIKAS_EDD_Crossed_'+new Date().toISOString().slice(0,10)+'.xlsx');
+}
+window.exportEddToExcel=exportEddToExcel;
 
 function goToEddDetail(){
   const btn=$('tab-btn-edd');
@@ -564,7 +576,7 @@ window.goToEddDetail=goToEddDetail;
 // Charts
 const CF={size:11,weight:'500'};
 
-new Chart($('statusDonut'),{
+safeChart($('statusDonut'),{
   type:'doughnut',
   data:{
     labels:['EDD Crossed','In Transit','Due Tomorrow','Booked'],
@@ -581,7 +593,7 @@ new Chart($('statusDonut'),{
   }
 });
 
-new Chart($('eddBarChart'),{
+safeChart($('eddBarChart'),{
   type:'bar',
   data:{
     labels:eddData.map(d=>d.name),
@@ -590,13 +602,13 @@ new Chart($('eddBarChart'),{
   options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,animation:{duration:1100},plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{font:CF}},y:{ticks:{font:CF},grid:{display:false}}}}
 });
 
-new Chart($('dueTmrChart'),{
+safeChart($('dueTmrChart'),{
   type:'bar',
   data:{labels:dueData.map(d=>d.name),datasets:[{label:'Due',data:dueData.map(d=>d.count),backgroundColor:orangeA(.6),borderRadius:4}]},
   options:{responsive:true,maintainAspectRatio:false,animation:{duration:1100},plugins:{legend:{display:false}},scales:{x:{ticks:{autoSkip:false,maxRotation:30,font:CF},grid:{display:false}},y:{beginAtZero:true}}}
 });
 
-new Chart($('bookedChart'),{
+safeChart($('bookedChart'),{
   type:'bar',
   data:{labels:bookedData.map(d=>d.name),datasets:[{label:'Booked',data:bookedData.map(d=>d.count),backgroundColor:'#8b8b8b',borderRadius:4}]},
   options:{responsive:true,maintainAspectRatio:false,animation:{duration:1100},plugins:{legend:{display:false}},scales:{x:{ticks:{autoSkip:false,maxRotation:30,font:CF},grid:{display:false}},y:{beginAtZero:true}}}
@@ -670,7 +682,7 @@ let tci=null;
 function renderTonnageCharts(){
   const top=clients.map(c=>{const{achieved,target}=getPStats(c,curPeriod);return{name:c.name,achieved:achieved||0,target:target||0}}).filter(r=>r.achieved>0||r.target>0).sort((a,b)=>(b.achieved||b.target)-(a.achieved||a.target)).slice(0,8);
   if(tci)tci.destroy();
-  tci=new Chart($('targetChart'),{
+  tci=safeChart($('targetChart'),{
     type:'bar',
     data:{
       labels:top.map(r=>r.name),
@@ -695,7 +707,7 @@ if(dtb)clients.filter(c=>c.achieved>0).forEach(c=>{
 
 // Avg/Day chart
 const topAvg=clients.filter(c=>c.avgDay>0).sort((a,b)=>b.avgDay-a.avgDay).slice(0,10);
-new Chart($('avgDayChart'),{
+safeChart($('avgDayChart'),{
   type:'bar',
   data:{labels:topAvg.map(c=>c.name),datasets:[{label:'Avg kg/day',data:topAvg.map(c=>c.avgDay),backgroundColor:C.orange,borderRadius:4}]},
   options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,animation:{duration:1100},plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{callback:v=>v.toLocaleString('en-IN'),font:CF}},y:{ticks:{font:CF},grid:{display:false}}}}
@@ -705,7 +717,7 @@ new Chart($('avgDayChart'),{
 const dc=$('daysChart');
 if(dc){
   const dd=clients.filter(c=>c.target>0&&c.avgDay>0&&c.remaining>0).sort((a,b)=>b.daysNeeded-a.daysNeeded).slice(0,10);
-  new Chart(dc,{
+  safeChart(dc,{
     type:'bar',
     data:{labels:dd.map(c=>c.name),datasets:[{label:'Days',data:dd.map(c=>c.daysNeeded),backgroundColor:dd.map(c=>c.daysNeeded>18?C.orange:'#8b8b8b'),borderRadius:4}]},
     options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,animation:{duration:1100},plugins:{legend:{display:false},title:{display:true,text:'Estimated days at current pace',font:{size:11,weight:'500'},color:C.text3,padding:{bottom:16}}},scales:{x:{beginAtZero:true,ticks:{font:CF}},y:{ticks:{font:CF},grid:{display:false}}}}
@@ -726,6 +738,8 @@ function renderKamSummary(){
   const kl=Object.values(km).sort((a,b)=>b.ta-a.ta);
   if(!kl.length){
     body.innerHTML=`<tr><td colspan="4" style="text-align:center;color:${C.text3};padding:24px">No data.</td></tr>`;
+    const tE=$('kam-total-target'),aE=$('kam-total-achieved'),pE=$('kam-total-pct');
+    if(tE)tE.textContent='—';if(aE)aE.textContent='—';if(pE)pE.textContent='—';
     return;
   }
   body.innerHTML=kl.map(k=>{
@@ -733,6 +747,14 @@ function renderKamSummary(){
     const pc=p===null?C.text4:bucketColor(p);
     return`<tr><td style="font-weight:600">${k.person}</td><td>${k.tt>0?fK(k.tt):'—'}</td><td>${fK(k.ta)}</td><td style="color:${pc};font-weight:600">${p!==null?p+'%':'—'}</td></tr>`;
   }).join('');
+  // KAM total summary — recomputed live so it stays correct across the tonnage period filter.
+  const totalTarget=kl.reduce((s,k)=>s+k.tt,0);
+  const totalAchieved=kl.reduce((s,k)=>s+k.ta,0);
+  const totalPct=totalTarget>0?(totalAchieved/totalTarget*100):null;
+  const tE=$('kam-total-target'),aE=$('kam-total-achieved'),pE=$('kam-total-pct');
+  if(tE)tE.textContent=fK(totalTarget);
+  if(aE)aE.textContent=fK(totalAchieved);
+  if(pE)pE.textContent=totalPct!==null?totalPct.toFixed(2):'—';
 }
 
 // Forecast
@@ -820,12 +842,14 @@ function renderDelayPanel() {
   const analysis = analyzeDelayReasons();
   const {reasonCounts, categoryCounts, transporterDelays, customerVendorCounts, total} = analysis;
   
-  $('dr-total-orders').textContent = total;
-  $('dr-unique-reasons').textContent = Object.keys(reasonCounts).length;
+  const setText=(id,val)=>{const el=$(id);if(el)el.textContent=val;};
+  setText('dr-total-orders', total);
+  setText('dr-unique-reasons', Object.keys(reasonCounts).length);
   const controllable = categoryCounts.customer + categoryCounts.documentation + categoryCounts.carrier;
   const external = categoryCounts.external + categoryCounts.location + categoryCounts.damage;
-  $('dr-controllable-pct').textContent = Math.round(controllable/total*100) + '%';
-  $('dr-external-pct').textContent = Math.round(external/total*100) + '%';
+  setText('dr-controllable-pct', (total?Math.round(controllable/total*100):0) + '%');
+  setText('dr-external-pct', (total?Math.round(external/total*100):0) + '%');
+  setText('tab-reasons-badge', total);
 
   // Customer vs Vendor attribution (from the sheet's own "Customer Vendor" tagging)
   const cv = customerVendorCounts;
@@ -842,7 +866,7 @@ function renderDelayPanel() {
   const cvCanvas = $('customerVendorDonut');
   if (cvCanvas) {
     const cvEntries = [['Customer', cv.customer, C.orange], ['Vendor', cv.vendor, '#8b8b8b'], ['Unclassified / In-Transit', cv.unclassified, '#3a3a3a']].filter(([,v]) => v > 0);
-    new Chart(cvCanvas, {
+    safeChart(cvCanvas, {
       type: 'doughnut',
       data: {
         labels: cvEntries.map(e => e[0]),
@@ -887,7 +911,7 @@ function renderDelayPanel() {
   
   // Category Donut
   const donutData = Object.entries(catMap).filter(([_,v]) => v > 0);
-  new Chart($('delayCategoryDonut'), {
+  safeChart($('delayCategoryDonut'), {
     type: 'doughnut',
     data: {
       labels: donutData.map(([k]) => REASON_CATEGORIES[k]?.label || 'Unclassified'),
@@ -909,7 +933,7 @@ function renderDelayPanel() {
   
   // Top 10 Reasons
   const topReasons = Object.entries(reasonCounts).sort((a,b) => b[1] - a[1]).slice(0, 10);
-  new Chart($('topReasonsChart'), {
+  safeChart($('topReasonsChart'), {
     type: 'bar',
     data: {
       labels: topReasons.map(([r]) => r.length > 40 ? r.slice(0,37)+'…' : r),
@@ -933,7 +957,7 @@ function renderDelayPanel() {
   
   // Transporter Chart
   const topTransporters = Object.entries(transporterDelays).sort((a,b) => b[1] - a[1]).slice(0, 8);
-  new Chart($('transporterChart'), {
+  safeChart($('transporterChart'), {
     type: 'bar',
     data: {
       labels: topTransporters.map(([t]) => t),
@@ -1065,7 +1089,8 @@ function renderInsights(analysis) {
 }
 
 // Init
-renderEddDetail('');
+populateEddFilterOptions();
+renderEddRows(eddDetail);
 renderTonnageBars();
 renderTonnageCharts();
 renderKamSummary();
