@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MVIKAS Logistics · Executive Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+
+  <header class="dash-header">
+    <div class="header-container">
+      <div class="brand-wrap">
+        <img src="mvload.png" alt="MVIKAS" class="brand-logo" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="brand-fallback" style="display:none">
+          <svg viewBox="0 0 40 40" width="36" height="36"><rect width="40" height="40" rx="8" fill="#f58220"/><path d="M10 28V12l5 10 5-10v16M25 12h6a4 4 0 010 8h-6v8" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="brand-divider"></div>
+      </div>
+      <div class="header-info">
+        <span class="live-badge"><span class="live-dot"></span>LIVE</span>
+        <span class="date-badge">
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z"/></svg>
+          August 16, 2026
+        </span>
+        <span class="elapsed-badge">
+          <svg viewBox="0 0 36 36" width="18" height="18" class="prog-ring">
+            <path d="M18 2.0845a15.9155 15.9155 0 010 31.831 15.9155 15.9155 0 010-31.831" fill="none" stroke="#2a2a2a" stroke-width="3"/>
+            <path d="M18 2.0845a15.9155 15.9155 0 010 31.831 15.9155 15.9155 0 010-31.831" fill="none" stroke="#f58220" stroke-width="3" stroke-dasharray="83.9,100" class="ring-fill"/>
+          </svg>
+          Day 16/31
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <div class="hero">
+    <div class="hero-content">
+      <div class="hero-grid">
+        <div class="hero-stat"><div class="hs-label">Open Shipments</div><div class="hs-val counter" data-target="709">548</div></div>
+        <div class="hero-stat"><div class="hs-label">EDD Crossed</div><div class="hs-val counter" data-target="150">234</div></div>
+        <div class="hero-stat"><div class="hs-label">Tonnage (kg)</div><div class="hs-val"><span class="counter" data-target="101.06" data-decimals="2">249370</span>k</div></div>
+        <div class="hero-stat"><div class="hs-label">Approx Revenue</div><div class="hs-val">₹<span class="counter" data-target="12.75">30.65</span>L</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dash">
+
+    <!-- KPI Cards -->
+    <section class="kpi-grid">
+      <div class="kpi anim-card" data-d="0">
+        <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div>
+        <div class="kpi-body"><div class="kpi-label">Total Open</div><div class="kpi-val" id="kpi-open">—</div><div class="kpi-sub">Active pipeline</div></div>
+      </div>
+      <div class="kpi anim-card" data-d="1">
+        <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/></svg></div>
+        <div class="kpi-body"><div class="kpi-label">Daily Avg Tonnage</div><div class="kpi-val" id="kpi-daily-avg">—</div><div class="kpi-sub">Month ÷ Days</div></div>
+      </div>
+      <div class="kpi kpi-accent anim-card clickable" data-d="2" onclick="goToEddDetail()" tabindex="0">
+        <div class="kpi-icon accent-i"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg></div>
+        <div class="kpi-body"><div class="kpi-label">EDD Crossed</div><div class="kpi-val" id="kpi-edd">—</div><div class="kpi-sub" id="kpi-edd-pct">of open</div></div>
+        <div class="pulse-dot"></div>
+      </div>
+      <div class="kpi anim-card" data-d="3">
+        <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+        <div class="kpi-body"><div class="kpi-label">Due Tomorrow</div><div class="kpi-val" id="kpi-due">—</div><div class="kpi-sub">At risk</div></div>
+      </div>
+      <div class="kpi anim-card" data-d="4">
+        <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg></div>
+        <div class="kpi-body"><div class="kpi-label">Booked Yesterday</div><div class="kpi-val" id="kpi-booked">—</div><div class="kpi-sub">Augiust 5</div></div>
+      </div>
+      <div class="kpi anim-card" data-d="5">
+        <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg></div>
+        <div class="kpi-body"><div class="kpi-label">Yesterday Tonnage</div><div class="kpi-val" id="kpi-daily-ton">—</div><div class="kpi-sub">All clients</div></div>
+      </div>
+      <div class="kpi anim-card" data-d="6">
+        <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/></svg></div>
+        <div class="kpi-body"><div class="kpi-label">Month Tonnage</div><div class="kpi-val" id="kpi-month-ton">—</div><div class="kpi-sub">August cumulative</div></div>
+      </div>
+      <div class="kpi anim-card" data-d="7">
+        <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M16 8l-4 4-4-4"/><path d="M12 12v6"/></svg></div>
+        <div class="kpi-body"><div class="kpi-label">Sales Target</div><div class="kpi-val" id="kpi-target-money">—</div><div class="kpi-sub">Target × rate</div></div>
+      </div>
+      <div class="kpi anim-card" data-d="8">
+        <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div>
+        <div class="kpi-body"><div class="kpi-label">Approx Sales Achieved</div><div class="kpi-val" id="kpi-sales-money">—</div><div class="kpi-sub">Achieved × rate</div></div>
+      </div>
+    </section>
+
+    <!-- Tabs -->
+    <div class="tabs" role="tablist">
+      <button class="tab active" role="tab" onclick="switchTab('classify',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>Classification</span></button>
+      <button class="tab" role="tab" onclick="switchTab('tonnage',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 20V10M12 20V4M6 20v-6"/></svg><span>Tonnage</span></button>
+      <button class="tab" role="tab" onclick="switchTab('daily',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><span>Daily Avg</span></button>
+      <button class="tab" role="tab" id="tab-btn-edd" onclick="switchTab('edd',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg><span>EDD Crossed</span><span class="tab-count" id="tab-edd-badge">0</span></button>
+    </div>
+
+    <!-- Panel 1: Classification -->
+    <div id="tab-classify" class="panel active">
+      <div class="strip anim-up">
+        <div class="strip-item"><span class="sdot" style="background:#f58220"></span>EDD Crossed<strong id="strip-edd">—</strong></div>
+        <div class="strip-item"><span class="sdot" style="background:#8b8b8b"></span>In Transit<strong id="strip-transit">—</strong></div>
+        <div class="strip-item"><span class="sdot" style="background:#5a5a5a"></span>Due Tomorrow<strong id="strip-due">—</strong></div>
+        <div class="strip-item"><span class="sdot" style="background:#3a3a3a"></span>Booked<strong id="strip-booked">—</strong></div>
+      </div>
+
+      <div class="row2">
+        <div class="card anim-up">
+          <div class="card-head"><span class="stitle">Shipment Status</span></div>
+          <div class="donut-wrap">
+            <div class="donut-legend">
+              <div class="dl-row"><span class="dl-dot" style="background:#f58220"></span>EDD Crossed<strong id="dl-edd">—</strong></div>
+              <div class="dl-row"><span class="dl-dot" style="background:#8b8b8b"></span>In Transit<strong id="dl-transit">—</strong></div>
+              <div class="dl-row"><span class="dl-dot" style="background:#5a5a5a"></span>Due Tomorrow<strong id="dl-due">—</strong></div>
+              <div class="dl-row"><span class="dl-dot" style="background:#3a3a3a"></span>Booked<strong id="dl-booked">—</strong></div>
+            </div>
+            <div class="chart-box" style="height:240px"><canvas id="statusDonut"></canvas></div>
+          </div>
+        </div>
+        <div class="card anim-up" style="animation-delay:.1s">
+          <div class="card-head"><span class="stitle">EDD Crossed — by Customer</span></div>
+          <div class="chart-box" style="height:340px"><canvas id="eddBarChart"></canvas></div>
+        </div>
+      </div>
+
+      <div class="row2">
+        <div class="card anim-up"><div class="card-head"><span class="stitle">Due Tomorrow — by Customer</span></div><div class="chart-box" style="height:260px"><canvas id="dueTmrChart"></canvas></div></div>
+        <div class="card anim-up" style="animation-delay:.1s"><div class="card-head"><span class="stitle">Booked Yesterday</span></div><div class="chart-box" style="height:260px"><canvas id="bookedChart"></canvas></div></div>
+      </div>
+
+      <div class="card anim-up">
+        <div class="card-head"><span class="stitle">Open Shipments — All Customers</span></div>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>Customer</th><th>Open</th><th>EDD Crossed</th><th>Due Tomorrow</th><th>% Delayed</th><th>Risk</th></tr></thead><tbody id="open-table-body"></tbody></table></div>
+      </div>
+    </div>
+
+    <!-- Panel 2: Tonnage -->
+    <div id="tab-tonnage" class="panel">
+      <div class="card forecast-card anim-up">
+        <div class="card-head"><span class="stitle">Revenue Forecast — Will August Hit Target?</span></div>
+        <div class="forecast-grid">
+          <div class="fstat"><div class="fstat-label">Total Target</div><div class="fstat-val" id="forecast-target-money">—</div></div>
+          <div class="fstat"><div class="fstat-label">Sales Till Date</div><div class="fstat-val" id="forecast-sales-money">—</div></div>
+          <div class="fstat highlight"><div class="fstat-label">Predicted Month-End</div><div class="fstat-val" id="forecast-predicted-money">—</div></div>
+        </div>
+        <div class="forecast-verdict"><span class="fbadge" id="forecast-badge">—</span><span id="forecast-verdict-text"></span></div>
+        <div class="fbar-wrap"><div class="fbar-track"><div class="fbar-fill" id="forecast-bar-fill"></div><div class="fbar-marker" id="forecast-bar-target-marker"></div></div><div class="fbar-labels"><span>₹0</span><span id="forecast-bar-target-label">Target</span></div></div>
+        <p class="footnote" id="forecast-explain"></p>
+      </div>
+
+      <div class="card anim-up">
+        <div class="tonnage-head">
+          <span class="stitle" id="tonnage-panel-title" style="margin:0">Tonnage — % Completion</span>
+          <select id="tonnage-period-filter" onchange="setTonnagePeriod(this.value)"><option value="full" selected>Full Month</option><option value="first10">First 10 Days</option><option value="mid10">Mid 10 Days</option><option value="last10">Last 10 Days</option></select>
+        </div>
+        <div class="legend" id="tonnage-legend"></div>
+        <div id="tonnage-bars"></div>
+      </div>
+
+      <div class="card anim-up"><span class="stitle">Target vs Achieved (Top 8)</span><div class="chart-box" style="height:360px"><canvas id="targetChart"></canvas></div></div>
+
+      <div class="card anim-up">
+        <span class="stitle">KAM Performance Summary</span>
+        <div class="forecast-grid" style="margin-top:14px">
+          <div class="fstat"><div class="fstat-label">Total Target</div><div class="fstat-val" id="kam-total-target">611685</div></div>
+          <div class="fstat"><div class="fstat-label">Total Achieved</div><div class="fstat-val" id="kam-total-achieved">190885</div></div>
+          <div class="fstat highlight"><div class="fstat-label">Total % Completion</div><div class="fstat-val" id="kam-total-pct">31.2</div></div>
+        </div>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>KAM Name</th><th>Target (kg)</th><th>Achieved (kg)</th><th>% Done</th></tr></thead><tbody id="kam-summary-body"></tbody></table></div>
+      </div>
+    </div>
+
+    <!-- Panel 3: Daily Avg -->
+    <div id="tab-daily" class="panel">
+      <div class="card anim-up">
+        <span class="stitle">Daily Average & Forecast</span>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Client</th><th>KAM</th><th>Target</th><th>Achieved</th><th>%</th><th>Days</th><th>Avg/Day</th><th>Remaining</th><th>Days Left*</th></tr></thead><tbody id="daily-table-body"></tbody></table></div>
+        <p class="footnote">* Extrapolated from current avg. Remaining days in August: 26.</p>
+      </div>
+      <div class="row2">
+        <div class="card anim-up"><span class="stitle">Avg kg/Day (Top 10)</span><div class="chart-box" style="height:360px"><canvas id="avgDayChart"></canvas></div></div>
+        <div class="card anim-up" style="animation-delay:.1s"><span class="stitle">Days to Complete Target</span><div class="chart-box" style="height:360px"><canvas id="daysChart"></canvas></div></div>
+      </div>
+    </div>
+
+    <!-- Panel 4: EDD Crossed -->
+    <div id="tab-edd" class="panel">
+      <div class="edd-kpi-grid">
+        <div class="edd-kpi anim-card" data-d="0"><div class="edd-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg></div><div class="edd-title">Total Delayed</div><div class="edd-val" id="edd-total-count">—</div><div class="edd-sub">Active crossed EDD</div></div>
+        <div class="edd-kpi anim-card" data-d="1"><div class="edd-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg></div><div class="edd-title">Primary Reason</div><div class="edd-val" id="edd-top-reason-name">—</div><div class="edd-sub" id="edd-top-reason-pct">0%</div></div>
+        <div class="edd-kpi anim-card" data-d="2"><div class="edd-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="1" y="3" width="15" height="13"/><polygon points="23 7 16 12 16 3"/></svg></div><div class="edd-title">Top Lagging Transporter</div><div class="edd-val" id="edd-worst-carrier">—</div><div class="edd-sub" id="edd-worst-carrier-count">0 delayed</div></div>
+        <div class="edd-kpi wide anim-card" data-d="3"><div class="edd-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/></svg></div><div class="edd-title">Delay Reasons Breakdown</div><div id="edd-reason-bars" class="reason-bars"></div></div>
+      </div>
+      <div class="card anim-up">
+        <div class="tonnage-head">
+          <span class="stitle" style="margin:0">EDD — Order Detail</span>
+          <div class="edd-head-actions">
+            <input type="text" id="edd-search" placeholder="Search orders…" oninput="applyEddFilters()" class="search-input">
+            <button type="button" class="export-btn" onclick="exportEddToExcel()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export to Excel
+            </button>
+          </div>
+        </div>
+        <div class="tonnage-head" style="margin-top:-4px">
+          <select id="edd-filter-type" onchange="applyEddFilters()"><option value="">All Types</option></select>
+          <select id="edd-filter-transporter" onchange="applyEddFilters()"><option value="">All Transporters</option></select>
+          <select id="edd-filter-reason" onchange="applyEddFilters()"><option value="">All Delay Reasons</option></select>
+          <button type="button" class="filter-reset" onclick="resetEddFilters()">Reset</button>
+        </div>
+        <div class="legend" id="edd-detail-count"></div>
+        <div class="tbl-wrap tbl-scroll"><table class="tbl"><thead><tr><th>Order ID</th><th>Customer</th><th>Type</th><th>Transporter</th><th>EDD</th><th>Delay Reason</th></tr></thead><tbody id="edd-detail-body"></tbody></table></div>
+      </div>
+    </div>
+
+  </div>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <span class="footer-brand"><svg width="18" height="18" viewBox="0 0 40 40"><rect width="40" height="40" rx="6" fill="#f58220"/><path d="M10 28V12l5 10 5-10v16" stroke="#0f0f0f" stroke-width="2.5" stroke-linecap="round"/></svg>MVIKAS Logistics ·August 2026</span>
+      <span class="footer-note">Auto-generated from MVLOAD_26_07_2026.xlsx</span>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
